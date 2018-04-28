@@ -4,13 +4,44 @@ import json
 import docker
 import semantic_version
 import os
+import requests
 import sys
 import argparse
 
 AHAB_SERVER = os.getenv("AHAB_SERVER","https://api.ahab.xyz/")
 
+
+
 class AhabClient():
-    def __init__(self, folder = os.getcwd(), file = "ahab.json"):
+    __DEFAULT_FILE_NAME = "ahab.json"
+
+    @classmethod
+    def from_params(cls, argv):
+        parser = argparse.ArgumentParser(description='Ahab Docker Client', prog="AHAB")
+        parser.add_argument("--file", dest="file", help="Custom configuration file", type=str, nargs="?", default=cls.__DEFAULT_FILE_NAME)
+
+        subparsers = parser.add_subparsers(help='Ahab Operations', dest="operation")
+        
+        parser_init = subparsers.add_parser('init', help='initialization')
+        parser_init.add_argument('image', type=str)
+        parser_init.add_argument('version', type=str, nargs="?", default="0.0.1")
+
+        parser_pull = subparsers.add_parser('update', help='updates the latest image data from central server')
+
+        parser_build = subparsers.add_parser('build', help='builds only')
+        parser_build.add_argument('bump', type=str, default="patch", nargs='?')
+
+        parser_push = subparsers.add_parser('push', help='builds and pushes')
+        parser_push.add_argument('bump', type=str, default="patch", nargs='?')
+
+
+        args = parser.parse_args(argv)
+        args = vars(args)
+
+        return args, AhabClient(file=args.get("file"))
+
+
+    def __init__(self, folder = os.getcwd(), file = self.__DEFAULT_FILE_NAME):
         self.folder = folder 
         self.dockerclient = docker.from_env()
         self.descriptor = file
@@ -32,6 +63,7 @@ class AhabClient():
         r = requests.get(url)
         cver = r.json.get("latest")
         self.conf.get("local")["version"] = cver
+        self.write_descriptor()
 
     def read_descriptor(self):
         with open(self.descriptor, "rb") as tf:
@@ -54,13 +86,19 @@ class AhabClient():
         print("building {} in folder {}".format(self.new_tag, self.folder))
         self.built = self.dockerclient.images.build(path=self.folder, tag=self.new_tag)
         print("built")
+        print("updating ahab")
+        url = AHAB_SERVER + "?image=" + self.conf.get("global")["image"] + "&version={}".format(self.next_version)
+        r = requests.get(url)
+        print("updated ahab")
 
     def push(self):
         print("pushing {}".format(self.new_tag))
         self.dockerclient.images.push(self.new_tag)
-        url = AHAB_SERVER + "?image="+self.conf.get("global")["image"]
-        r = requests.get(url)
         print("pushed")
+        print("updating ahab")
+        url = AHAB_SERVER + "?image="+self.conf.get("global")["image"]+"&version={}".format(self.next_version)
+        r = requests.get(url)
+        print("updated ahab")
 
     def write_descriptor(self, init = False):
         with open(self.descriptor, "wb") as tf:
@@ -69,6 +107,7 @@ class AhabClient():
             json.dump(self.conf, tf)
 
     def run(self, bump = "patch", push = True):
+        self.pull()
         try:
             self.read_descriptor()
             if   bump == "patch":
@@ -88,31 +127,8 @@ class AhabClient():
             print(ex)
 
 def main(argv):
-    parser = argparse.ArgumentParser(description='Ahab Docker Client', prog="AHAB")
-    parser.add_argument("--file", dest="file", help="Custom configuration file", type=str, nargs="?", default=".ahab.json")
 
-    subparsers = parser.add_subparsers(help='Ahab Operations', dest="operation")
-    
-    parser_init = subparsers.add_parser('init', help='initialization')
-    parser_init.add_argument('image', type=str)
-    parser_init.add_argument('version', type=str, nargs="?", default="0.0.1")
-
-    parser_pull = subparsers.add_parser('update', help='updates the latest image data from central server')
-
-
-    parser_build = subparsers.add_parser('build', help='builds only')
-    parser_build.add_argument('bump', type=str, default="patch", nargs='?')
-
-    parser_push = subparsers.add_parser('push', help='builds and pushes')
-    parser_push.add_argument('bump', type=str, default="patch", nargs='?')
-
-
-    args = parser.parse_args(argv)
-    args = vars(args)
-
-    # print args
-
-    c = AhabClient(file = args.get("file"))
+    args, c = AhabClient.from_params(argv)
     if args.get("operation") == "init":
         c.init(args.get("image"), args.get("version"))
     if args.get("operation") == "update":
