@@ -11,6 +11,7 @@ import argparse
 AHAB_SERVER = os.getenv("AHAB_SERVER","https://api.ahab.xyz/")
 
 
+__DEFAULT_FILE_NAME = "ahab.json"
 
 class AhabClient():
     __DEFAULT_FILE_NAME = "ahab.json"
@@ -41,7 +42,7 @@ class AhabClient():
         return args, AhabClient(file=args.get("file"))
 
 
-    def __init__(self, folder = os.getcwd(), file = self.__DEFAULT_FILE_NAME):
+    def __init__(self, folder = os.getcwd(), file = __DEFAULT_FILE_NAME):
         self.folder = folder 
         self.dockerclient = docker.from_env()
         self.descriptor = file
