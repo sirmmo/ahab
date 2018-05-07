@@ -8,8 +8,8 @@ import requests
 import sys
 import argparse
 
+CONTACT_SERVER = False
 AHAB_SERVER = os.getenv("AHAB_SERVER","https://api.ahab.xyz/")
-
 
 __DEFAULT_FILE_NAME = "ahab.json"
 
@@ -61,14 +61,16 @@ class AhabClient():
     def pull(self, mode = "latest"):
         self.read_descriptor()
         url = AHAB_SERVER + "?image="+self.conf.get("global")["image"]
-        r = requests.get(url)
-        cver = r.json.get("latest")
+        cver = self.conf.get("local")["version"]
+        if CONTACT_SERVER:
+            r = requests.get(url)
+            cver = r.json.get("latest")
         self.conf.get("local")["version"] = cver
         self.write_descriptor()
 
     def read_descriptor(self):
-        with open(self.descriptor, "rb") as tf:
-            self.conf = json.load(tf)
+        with open(self.descriptor, "rt") as tf:
+            self.conf = json.loads(tf.read())
             self.tag = self.conf.get("global").get("image")
             self.prev_version = self.conf.get("local").get("version")
 
@@ -89,7 +91,8 @@ class AhabClient():
         print("built")
         print("updating ahab")
         url = AHAB_SERVER + "?image=" + self.conf.get("global")["image"] + "&version={}".format(self.next_version)
-        r = requests.get(url)
+        if CONTACT_SERVER:
+            r = requests.get(url)
         print("updated ahab")
 
     def push(self):
@@ -98,7 +101,8 @@ class AhabClient():
         print("pushed")
         print("updating ahab")
         url = AHAB_SERVER + "?image="+self.conf.get("global")["image"]+"&version={}".format(self.next_version)
-        r = requests.get(url)
+        if CONTACT_SERVER:
+            r = requests.get(url)
         print("updated ahab")
 
     def write_descriptor(self, init = False):
@@ -127,8 +131,8 @@ class AhabClient():
             print("ARRR! We need a whale to go whale hunting. Docker must be running.")
             print(ex)
 
-def main(argv):
-
+def main():
+    argv = sys.argv[1:]
     args, c = AhabClient.from_params(argv)
     if args.get("operation") == "init":
         c.init(args.get("image"), args.get("version"))
@@ -140,4 +144,4 @@ def main(argv):
         c.run(bump = args.get("bump"))
 
 if __name__ == "__main__":
-    main(sys.argv[1:])
+    main()
